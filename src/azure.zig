@@ -16,7 +16,7 @@ pub const Account = struct {
 
 /// NOTE: this is the only supported API version
 /// https://learn.microsoft.com/en-us/rest/api/storageservices/service-sas-examples#blob-examples
-const version: []const u8 = "2015-02-21";
+pub const version: []const u8 = "2015-02-21";
 
 fn findHeader(haystack: []const std.http.Header, needle: []const u8) ?[]const u8 {
     for (haystack) |header| {
