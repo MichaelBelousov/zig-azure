@@ -451,6 +451,11 @@ pub const ServiceSas = struct {
             },
         ) catch unreachable;
 
+        // TODO: only in debug mode
+        std.debug.print("SIGNATURE INPUT:\n", .{});
+        std.json.stringify(signature_input, .{}, std.io.getStdErr().writer()) catch unreachable;
+        std.debug.print("\n", .{});
+
         const signature_input_urldecoded = std.Uri.percentDecodeInPlace(signature_input);
 
         const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
