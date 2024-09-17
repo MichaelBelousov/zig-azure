@@ -412,9 +412,8 @@ pub const ServiceSas = struct {
     signature: []const u8,
 
     const CanonicalizedResourceString = struct {
-        accountName: []const u8,
         serviceType: []const u8 = "blob",
-        /// includes the "/" from the uri path
+        // NOTE: includes the leading '/'
         path: []const u8,
 
         pub fn format(
@@ -426,13 +425,12 @@ pub const ServiceSas = struct {
             _ = fmt_str;
             _ = fmt_opts;
 
-            _ = try writer.print("/{s}/{s}{s}", .{ self.serviceType, self.accountName, self.path });
+            _ = try writer.print("/{s}{s}", .{ self.serviceType, self.path });
         }
 
         test "format ServiceSas blob CanonicalizedResourceString" {
             // URL = https://myaccount.blob.core.windows.net/music/intro.mp3
             const formatted = std.fmt.comptimePrint("{}", .{ServiceSas.CanonicalizedResourceString{
-                .accountName = "myaccount",
                 .path = "music/intro.mp3",
             }});
 
@@ -473,7 +471,7 @@ pub const ServiceSas = struct {
                 fields.permissions,
                 fields.start orelse "",
                 fields.expiry,
-                ServiceSas.CanonicalizedResourceString{ .accountName = account.name, .path = path },
+                ServiceSas.CanonicalizedResourceString{ .path = path },
                 fields.identifier orelse "",
                 fields.ip orelse "",
                 fields.protocol orelse "",
@@ -540,7 +538,7 @@ pub const ServiceSas = struct {
             _ = try writer.print("&sig=", .{});
             try std.Uri.Component.percentEncode(writer, self.sas.signature, isNotBase64Char);
             _ = try writer.print("&ss={s}", .{self.sas.fields.services});
-            _ = try writer.print("&srt={s}", .{self.sas.fields.resource});
+            _ = try writer.print("&sr={s}", .{self.sas.fields.resource});
             _ = try writer.print("&sp={s}", .{self.sas.fields.permissions});
             _ = try writer.print("&se={s}", .{self.sas.fields.expiry});
             if (self.sas.fields.identifier) |si|
