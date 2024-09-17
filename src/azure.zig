@@ -335,10 +335,15 @@ pub fn get8601UtcTime(a: std.mem.Allocator, opts: struct { offset_sec: c_int = 0
 }
 
 fn isNotBase64Char(_c: u8) bool {
-    return !switch (_c) {
+    const isBase64Char = switch (_c) {
         '+', '/' => true,
         else => false,
     };
+    return !isBase64Char;
+}
+
+fn isNotColon(_c: u8) bool {
+    return _c != ':';
 }
 
 /// https://learn.microsoft.com/en-us/rest/api/storageservices/create-service-sas
@@ -348,6 +353,8 @@ pub const ServiceSas = struct {
     pub const Fields = struct {
         /// year/month/day
         version: []const u8 = "2015-04-05",
+        // subset of "bqtf"
+        services: []const u8 = "",
         // subset of "bcd" with addons "vs"
         resource: []const u8 = "",
         /// year/month/day
@@ -411,6 +418,7 @@ pub const ServiceSas = struct {
 
     const CanonicalizedResourceString = struct {
         serviceType: []const u8 = "blob",
+        account_name: []const u8,
         // NOTE: includes the leading '/'
         path: []const u8,
 
@@ -423,7 +431,7 @@ pub const ServiceSas = struct {
             _ = fmt_str;
             _ = fmt_opts;
 
-            _ = try writer.print("/{s}{s}", .{ self.serviceType, self.path });
+            _ = try writer.print("/{s}/{s}{s}", .{ self.serviceType, self.account_name, self.path });
         }
 
         test "format ServiceSas blob CanonicalizedResourceString" {
@@ -436,18 +444,20 @@ pub const ServiceSas = struct {
         }
     };
 
-    /// path must not contain the leading "/"
+    /// path must contain the leading '/'
+    /// if in azurite, make sure "NOT" to contain the root part of the path that is the account name
     pub fn sign(a: std.mem.Allocator, fields: Fields, path: []const u8, account: Account) ServiceSas {
         const Base64Decoder = std.base64.standard.Decoder;
         // TODO: error handling
 
         // TODO: we know key size, use an exact size buffer
-        var key_buff: [512]u8 = undefined;
+        var key_buff: [128]u8 = undefined;
         const decoded_key = key_buff[0 .. Base64Decoder.calcSizeForSlice(account.key) catch unreachable];
 
         Base64Decoder.decode(decoded_key, account.key) catch unreachable;
 
-        var input_buff: [1024]u8 = undefined;
+        // FIXME: paths that are too long will crash
+        var input_buff: [2048]u8 = undefined;
 
         const signature_input = std.fmt.bufPrint(
             &input_buff,
@@ -469,7 +479,7 @@ pub const ServiceSas = struct {
                 fields.permissions,
                 fields.start orelse "",
                 fields.expiry,
-                ServiceSas.CanonicalizedResourceString{ .path = path },
+                ServiceSas.CanonicalizedResourceString{ .path = path, .account_name = account.name },
                 fields.identifier orelse "",
                 fields.ip orelse "",
                 fields.protocol orelse "",
@@ -530,24 +540,29 @@ pub const ServiceSas = struct {
             fmt_opts: std.fmt.FormatOptions,
             writer: anytype,
         ) @TypeOf(writer).Error!void {
+            // TODO: print everything through a wrapping percent encoding writer
             _ = fmt_str;
             _ = fmt_opts;
-            _ = try writer.print("sv={s}", .{self.sas.fields.version});
-            _ = try writer.print("&sig=", .{});
-            try std.Uri.Component.percentEncode(writer, self.sas.signature, isNotBase64Char);
-            _ = try writer.print("&sr={s}", .{self.sas.fields.resource});
-            _ = try writer.print("&sp={s}", .{self.sas.fields.permissions});
-            _ = try writer.print("&se={s}", .{self.sas.fields.expiry});
+            _ = try writer.print("sp={s}", .{self.sas.fields.permissions});
+
+            if (self.sas.fields.start) |st| {
+                // _ = try writer.print("&st={s}", .{st});
+                _ = try writer.print("&st=", .{});
+                try std.Uri.Component.percentEncode(writer, st, isNotColon);
+            }
+
+            //_ = try writer.print("&se={s}", .{self.sas.fields.expiry});
+            _ = try writer.print("&se=", .{});
+            try std.Uri.Component.percentEncode(writer, self.sas.fields.expiry, isNotColon);
+
             if (self.sas.fields.identifier) |si|
                 _ = try writer.print("&si={s}", .{si});
-            if (self.sas.fields.directoryDepth) |sdd|
-                _ = try writer.print("&sdd={}", .{sdd});
-            if (self.sas.fields.start) |st|
-                _ = try writer.print("&st={s}", .{st});
             if (self.sas.fields.ip) |sip|
                 _ = try writer.print("&sip={s}", .{sip});
             if (self.sas.fields.protocol) |spr|
                 _ = try writer.print("&spr={s}", .{spr});
+            if (self.sas.fields.directoryDepth) |sdd|
+                _ = try writer.print("&sdd={}", .{sdd});
             if (self.sas.fields.encryptionScope) |ses|
                 _ = try writer.print("&ses={s}", .{ses});
             if (self.sas.fields.response != null and self.sas.fields.response.?.cacheControl != null)
@@ -560,6 +575,10 @@ pub const ServiceSas = struct {
                 _ = try writer.print("&rscl={s}", .{self.sas.fields.response.?.contentLanguage.?});
             if (self.sas.fields.response != null and self.sas.fields.response.?.contentType != null)
                 _ = try writer.print("&rsct={s}", .{self.sas.fields.response.?.contentType.?});
+            _ = try writer.print("&sv={s}", .{self.sas.fields.version});
+            _ = try writer.print("&sr={s}", .{self.sas.fields.resource});
+            _ = try writer.print("&sig=", .{});
+            try std.Uri.Component.percentEncode(writer, self.sas.signature, isNotBase64Char);
         }
     };
 };
@@ -573,13 +592,12 @@ pub const AccountSas = struct {
 
     const CanonicalizedResourceString = ServiceSas.CanonicalizedResourceString;
 
-    /// path must not contain the leading "/"
     pub fn sign(a: std.mem.Allocator, fields: Fields, account: Account) ServiceSas {
         const Base64Decoder = std.base64.standard.Decoder;
         // TODO: error handling
 
         // TODO: we know key size, use an exact size buffer
-        var key_buff: [512]u8 = undefined;
+        var key_buff: [128]u8 = undefined;
         const decoded_key = key_buff[0 .. Base64Decoder.calcSizeForSlice(account.key) catch unreachable];
 
         Base64Decoder.decode(decoded_key, account.key) catch unreachable;
