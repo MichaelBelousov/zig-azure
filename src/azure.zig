@@ -371,6 +371,41 @@ pub const ServiceSas = struct {
             contentType: ?[]const u8 = null,
             cacheControl: ?[]const u8 = null,
         } = null,
+
+        const ResourceType = enum(u16) {
+            blob = parse("b"),
+            blobSnapshot = parse("bs"),
+            blobVersion = parse("bv"),
+            container = parse("c"),
+            directory = parse("d"),
+
+            // copying std.http.Method hack
+            pub fn parse(src: []const u8) ?u16 {
+                if (std.mem.eql(u8, src, "b")) {
+                    return @as(*u16, @ptrCast("b\x00".ptr)).*;
+                } else if (std.mem.eql(u8, src, "bv")) {
+                    return @as(*u16, @ptrCast("bv".ptr)).*;
+                } else if (std.mem.eql(u8, src, "bs")) {
+                    return @as(*u16, @ptrCast("bs".ptr)).*;
+                } else if (std.mem.eql(u8, src, "c")) {
+                    return @as(*u16, @ptrCast("c\x00".ptr)).*;
+                } else if (std.mem.eql(u8, src, "d")) {
+                    return @as(*u16, @ptrCast("d\x00".ptr)).*;
+                } else {
+                    return null;
+                }
+            }
+
+            pub fn string(self: @This()) []const u8 {
+                switch (self) {
+                    .blob => "b",
+                    .blobSnapshot => "bs",
+                    .blobVersion => "bv",
+                    .container => "c",
+                    .directory => "d",
+                }
+            }
+        };
     };
 
     fields: Fields,
