@@ -348,8 +348,6 @@ pub const ServiceSas = struct {
     pub const Fields = struct {
         /// year/month/day
         version: []const u8 = "2015-04-05",
-        // subset of "bqtf"
-        services: []const u8 = "",
         // subset of "bcd" with addons "vs"
         resource: []const u8 = "",
         /// year/month/day
@@ -537,7 +535,6 @@ pub const ServiceSas = struct {
             _ = try writer.print("sv={s}", .{self.sas.fields.version});
             _ = try writer.print("&sig=", .{});
             try std.Uri.Component.percentEncode(writer, self.sas.signature, isNotBase64Char);
-            _ = try writer.print("&ss={s}", .{self.sas.fields.services});
             _ = try writer.print("&sr={s}", .{self.sas.fields.resource});
             _ = try writer.print("&sp={s}", .{self.sas.fields.permissions});
             _ = try writer.print("&se={s}", .{self.sas.fields.expiry});
